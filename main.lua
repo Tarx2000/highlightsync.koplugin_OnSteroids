@@ -20,7 +20,7 @@ local SYNC_MAX_POLLS = 240 -- 60 seconds
 local function dir_exists(path)
     local ok, _, code = os.rename(path, path)
     if not ok then
-        -- Código 13 = permission denied, bat folder has to exist
+        -- code 13 = permission denied, meaning the folder exists but is not writable
         return code == 13
     end
     return true
@@ -247,16 +247,8 @@ local function read_sync_result(path)
     return status == "ok", message
 end
 
-function Highlightsync:is_doc()
-    if self.document then
-        return true
-    else
-        return false
-    end
-end
-
 function Highlightsync:canSync()
-    return self.is_doc(self) and self.settings.sync_server ~= nil
+    return self.document ~= nil and self.settings.sync_server ~= nil
 end
 
 local function sanitize_filename(str)
@@ -440,10 +432,10 @@ function Highlightsync:addToMainMenu(menu_items)
                             UIManager:close(dialogue)
                         end
                     }
-                    local type = server.type == "dropbox" and " (DropBox)" or " (WebDAV)"
+                    local server_type = server.type == "dropbox" and " (DropBox)" or " (WebDAV)"
                     dialogue = ButtonDialog:new{
                         title = T(_("Cloud storage:\n%1\n\nFolder path:\n%2\n\nSet up the same cloud folder on each device to sync across your devices."),
-                                     server.name.." "..type, SyncService.getReadablePath(server)),
+                                     server.name.." "..server_type, SyncService.getReadablePath(server)),
                         buttons = {
                             {delete_button, edit_button, close_button}
                         },
@@ -458,7 +450,7 @@ function Highlightsync:addToMainMenu(menu_items)
                 callback = function()
                     self:SyncBookHighlights(false, true)
                 end,
-                enabled_func = function() return self.canSync(self) end
+                enabled_func = function() return self:canSync() end
             },
             {
                 text = _("Settings"), 

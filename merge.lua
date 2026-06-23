@@ -74,20 +74,16 @@ local function merge_highlights(local_annotations, server_annotations, last_sync
 
     local merged = {}
 
-    -- Processa os highlights locais
     for key, local_highlight in pairs(local_map) do
-        local server_highlight = server_map[key]
-        local last_sync_highlight = last_sync_map[key]
-        if not (server_highlight == nil and last_sync_highlight ~= nil) then
+        local deleted_on_server = server_map[key] == nil and last_sync_map[key] ~= nil
+        if not deleted_on_server then
             merged[key] = local_highlight
         end
     end
 
-    -- Processa highlights do servidor
     for key, server_highlight in pairs(server_map) do
-        if last_sync_map[key] ~= nil and local_map[key] == nil then
-            -- foi deletado localmente, ignorar
-        else
+        local deleted_locally = last_sync_map[key] ~= nil and local_map[key] == nil
+        if not deleted_locally then
             if not local_map[key] then
                 merged[key] = server_highlight
             else
@@ -96,13 +92,11 @@ local function merge_highlights(local_annotations, server_annotations, last_sync
         end
     end
 
-    -- Converte o resultado de volta para array
     local merged_annotations = {}
     for _, h in pairs(merged) do
         merged_annotations[#merged_annotations+1] = h
     end
 
-    -- Ordenação simples por pageno e pos0
     table.sort(merged_annotations, function(a, b)
         if a.pageno ~= b.pageno then
             return (a.pageno or 0) < (b.pageno or 0)
@@ -114,16 +108,14 @@ local function merge_highlights(local_annotations, server_annotations, last_sync
         -- with keys x, y, zoom, page, rotation,
         -- as is the case with pdf highlights
         if type(a.pos0) == "table" then
-          if type(b.pos0) == "table" then
-            local ay, by = a.pos0.y or 0, b.pos0.y or 0
-            local ax, bx = a.pos0.x or 0, b.pos0.x or 0
-            return ay < by or (ay == by and ax < bx)
-          end
-          -- Posistions can't be compared
-          return false
+            if type(b.pos0) == "table" then
+                local ay, by = a.pos0.y or 0, b.pos0.y or 0
+                local ax, bx = a.pos0.x or 0, b.pos0.x or 0
+                return ay < by or (ay == by and ax < bx)
+            end
+            return false
         elseif type(b.pos0) == "table" then
-          -- Posistions can't be compared
-          return true
+            return true
         end
 
         return a.pos0 < b.pos0
@@ -132,8 +124,4 @@ local function merge_highlights(local_annotations, server_annotations, last_sync
     return merged_annotations
 end
 
-local M = {}
-
-M.Merge_highlights = merge_highlights
-
-return M
+return { Merge_highlights = merge_highlights }
