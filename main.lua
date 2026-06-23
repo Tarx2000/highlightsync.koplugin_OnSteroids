@@ -68,7 +68,7 @@ local function with_stringified_ext_keys(annotations)
     return new_annotations
 end
 
---- Modifies the given table so the keys in the `ext` sub-table are paresd into numbers.
+--- Modifies the given table so the keys in the `ext` sub-table are parsed into numbers.
 local function destringify_ext_keys(annotations)
     for hash, annotation in pairs(annotations) do
         if annotation["ext"] then
@@ -116,16 +116,13 @@ end
 
 
 function Highlightsync:onDispatcherRegisterActions()
-
-        --- for gestures
-        Dispatcher:registerAction("hightlightsync_action", {
-            category = "none",
-            event = "SyncBookHighlights",
-            title = _("Sync Highlights Now"),
-            help = _("Synchronize highlights with the cloud."),
-            reader = true
-        })
-
+    Dispatcher:registerAction("highlightsync_action", {
+        category = "none",
+        event = "SyncBookHighlights",
+        title = _("Sync Highlights Now"),
+        help = _("Synchronize highlights with the cloud."),
+        reader = true
+    })
 end
 
 Highlightsync.default_settings = {
@@ -209,10 +206,10 @@ end
 
 
 
-local function merge_sync_files(cached_path, income_path, context)
+local function merge_sync_files(cached_path, incoming_path, context)
     local local_highlights = context.annotations
     local cached_highlights = read_json_file(cached_path) or {}
-    local income_highlights = read_json_file(income_path) or {}
+    local income_highlights = read_json_file(incoming_path) or {}
 
     local annotations = Merge.Merge_highlights(local_highlights, income_highlights, cached_highlights)
 
@@ -270,7 +267,7 @@ local function sanitize_filename(str)
 end
 
 function Highlightsync:onSyncBookHighlights()
-        self:SyncBookHighlights(false, true)   
+    self:SyncBookHighlights(false, true)
 end
 
 function Highlightsync:SyncBookHighlights(silent, reload)
@@ -420,8 +417,6 @@ function Highlightsync:addToMainMenu(menu_items)
                             UIManager:show(ConfirmBox:new{
                                 text = _("Delete server info?"),
                                 cancel_text = _("Cancel"),
-                                cancel_callback = function()
-                                end,
                                 ok_text = _("Delete"),
                                 ok_callback = function()
                                     self.settings.sync_server = nil
