@@ -295,92 +295,140 @@ function Highlightsync:SyncBookHighlights(silent, reload)
     local result_file = sync_file .. ".highlightsync-result"
     os.remove(result_file)
 
-    if not write_json_file(sync_file, annotations) then
-        logger.warn("Highlightsync: unable to write local sync file:", sync_file)
-        return
-    end
+    local sync_cache_file = sync_file .. ".sync"
 
-    self.settings.sync_in_progress = true
-    G_reader_settings:saveSetting("highlight_sync", self.settings)
-    self.is_syncing = true
-
-    local server = self.settings.sync_server
-    local launch_ok, pid, launch_error = pcall(FFIUtil.runInSubProcess, function()
-        local ok, success, message = xpcall(function()
-            return Transport.sync(server, sync_file,
-                function(_, cached_path, incoming_path)
-                    return merge_sync_files(cached_path, incoming_path, context)
-                end
-            )
-        end, debug.traceback)
-        if not ok then
-            write_sync_result(result_file, false, success)
-        else
-            write_sync_result(result_file, success, message)
-        end
-    end)
-
-    if not launch_ok then
-        launch_error = pid
-        pid = nil
-    end
-
-    if not pid then
-        logger.warn("Highlightsync: unable to start background sync:", launch_error)
-        self.is_syncing = false
-        self:clearSyncMarker()
-        return
-    end
-
-    self.sync_process = pid
-    local polls = 0
-    local poll
-    poll = function()
-        polls = polls + 1
-        if not FFIUtil.isSubProcessDone(pid) then
-            if polls < SYNC_MAX_POLLS then
-                UIManager:scheduleIn(SYNC_POLL_INTERVAL, poll)
-                return
-            end
-            FFIUtil.terminateSubProcess(pid)
-            logger.warn("Highlightsync: background sync timed out.")
-            self.is_syncing = false
-            self.sync_process = nil
-            self:clearSyncMarker()
-            local reap
-            reap = function()
-                if FFIUtil.isSubProcessDone(pid) then
-                    os.remove(result_file)
-                else
-                    UIManager:scheduleIn(SYNC_POLL_INTERVAL, reap)
-                end
-            end
-            UIManager:scheduleIn(SYNC_POLL_INTERVAL, reap)
+    -- do_sync launches the background process. Called directly when no conflict
+    -- is detected, or from dialog callbacks after the user resolves one.
+    local function do_sync()
+        if not write_json_file(sync_file, annotations) then
+            logger.warn("Highlightsync: unable to write local sync file:", sync_file)
             return
         end
 
-        self.sync_process = nil
-        self.is_syncing = false
-        local success, message = read_sync_result(result_file)
-        self:clearSyncMarker()
-        if success then
-            self:onSyncComplete(reload, context)
-            if not silent then
-                UIManager:show(Notification:new{
-                    text = _("Highlights synchronized."),
-                })
+        self.settings.sync_in_progress = true
+        G_reader_settings:saveSetting("highlight_sync", self.settings)
+        self.is_syncing = true
+
+        local server = self.settings.sync_server
+        local launch_ok, pid, launch_error = pcall(FFIUtil.runInSubProcess, function()
+            local ok, success, message = xpcall(function()
+                return Transport.sync(server, sync_file,
+                    function(_, cached_path, incoming_path)
+                        return merge_sync_files(cached_path, incoming_path, context)
+                    end
+                )
+            end, debug.traceback)
+            if not ok then
+                write_sync_result(result_file, false, success)
+            else
+                write_sync_result(result_file, success, message)
             end
-        else
-            logger.warn("Highlightsync: background sync failed:", message)
-            if not silent then
-                UIManager:show(InfoMessage:new{
-                    text = _("Highlight sync failed. Check the network connection and try again."),
-                    timeout = 3,
-                })
+        end)
+
+        if not launch_ok then
+            launch_error = pid
+            pid = nil
+        end
+
+        if not pid then
+            logger.warn("Highlightsync: unable to start background sync:", launch_error)
+            self.is_syncing = false
+            self:clearSyncMarker()
+            return
+        end
+
+        self.sync_process = pid
+        local polls = 0
+        local poll
+        poll = function()
+            polls = polls + 1
+            if not FFIUtil.isSubProcessDone(pid) then
+                if polls < SYNC_MAX_POLLS then
+                    UIManager:scheduleIn(SYNC_POLL_INTERVAL, poll)
+                    return
+                end
+                FFIUtil.terminateSubProcess(pid)
+                logger.warn("Highlightsync: background sync timed out.")
+                self.is_syncing = false
+                self.sync_process = nil
+                self:clearSyncMarker()
+                local reap
+                reap = function()
+                    if FFIUtil.isSubProcessDone(pid) then
+                        os.remove(result_file)
+                    else
+                        UIManager:scheduleIn(SYNC_POLL_INTERVAL, reap)
+                    end
+                end
+                UIManager:scheduleIn(SYNC_POLL_INTERVAL, reap)
+                return
+            end
+
+            self.sync_process = nil
+            self.is_syncing = false
+            local success, message = read_sync_result(result_file)
+            self:clearSyncMarker()
+            if success then
+                self:onSyncComplete(reload, context)
+                if not silent then
+                    UIManager:show(Notification:new{
+                        text = _("Highlights synchronized."),
+                    })
+                end
+            else
+                logger.warn("Highlightsync: background sync failed:", message)
+                if not silent then
+                    UIManager:show(InfoMessage:new{
+                        text = _("Highlight sync failed. Check the network connection and try again."),
+                        timeout = 3,
+                    })
+                end
             end
         end
+        UIManager:scheduleIn(SYNC_POLL_INTERVAL, poll)
     end
-    UIManager:scheduleIn(SYNC_POLL_INTERVAL, poll)
+
+    -- If local annotations are empty but the sync cache is not, the device may
+    -- never have had the highlights (e.g. cache arrived via sidecar sync), or
+    -- the user deliberately deleted them. Ask before deciding which way to go.
+    local cached_annotations = read_json_file(sync_cache_file)
+    if #annotations == 0 and #cached_annotations > 0 then
+        local dialogue
+        dialogue = ButtonDialog:new{
+            title = _("This device has no highlights, but another device does. Which is correct?"),
+            buttons = {
+                {
+                    {
+                        text = _("Other Device"),
+                        callback = function()
+                            UIManager:close(dialogue)
+                            os.remove(sync_cache_file)
+                            do_sync()
+                        end,
+                    },
+                    {
+                        text = _("This Device"),
+                        callback = function()
+                            UIManager:close(dialogue)
+                            do_sync()
+                        end,
+                    },
+                },
+                {
+                    {
+                        text = _("Cancel"),
+                        callback = function()
+                            UIManager:close(dialogue)
+                        end,
+                    },
+                },
+            },
+        }
+        UIManager:show(dialogue)
+        return
+    end
+
+    do_sync()
 end
 
 
@@ -390,7 +438,14 @@ function Highlightsync:addToMainMenu(menu_items)
         text = _("Highlight Sync"),
         sub_item_table = {
             {
-                text = _("Sync Cloud"),
+                text = _("Sync Highlights"),
+                callback = function()
+                    self:SyncBookHighlights(false, true)
+                end,
+                enabled_func = function() return self:canSync() end
+            },
+            {
+                text = _("Configure Cloud"),
                 callback = function(touchmenu_instance)
                     local server = self.settings.sync_server
                     local edit_cb = function()
@@ -451,13 +506,6 @@ function Highlightsync:addToMainMenu(menu_items)
                 end,
                 enabled_func = function() return self.settings.is_enabled end,
                 keep_menu_open = true,
-            },
-            {
-                text = _("Sync Highlights"),
-                callback = function()
-                    self:SyncBookHighlights(false, true)
-                end,
-                enabled_func = function() return self:canSync() end
             },
             {
                 text = _("Settings"), 

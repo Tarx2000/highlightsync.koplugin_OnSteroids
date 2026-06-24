@@ -46,6 +46,17 @@ merged = Merge.Merge_highlights(
 )
 assert_equal(#merged, 0, "local deletion")
 
+-- When a device opens a book for the first time (no local annotations) but has
+-- a stale sync cache (e.g. copied from another device), the merge alone would
+-- wrongly treat every server highlight as "deleted locally".  main.lua clears
+-- the cache before calling merge in that case, so the cache passed here is {}.
+merged = Merge.Merge_highlights(
+    {},
+    { annotation("server", "1", "2026-01-01 00:00:00") },
+    {}
+)
+assert_equal(#merged, 1, "first-time device pulls server highlights")
+
 -- PDF positions sort by y and then x.
 merged = Merge.Merge_highlights({
     annotation({ x = 20, y = 10 }, { x = 21, y = 10 }, nil, { pageno = 1 }),
