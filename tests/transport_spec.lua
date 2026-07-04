@@ -1,6 +1,10 @@
 package.path = "./?.lua;" .. package.path
 
 local base_path = "/tmp/highlightsync-transport-spec.json"
+if package.config:sub(1, 1) == "\\" then
+    base_path = base_path:gsub("/", "\\")
+    os.execute('mkdir \\tmp 2>nul')
+end
 local download_calls = 0
 local upload_calls = 0
 local next_upload_code = 201

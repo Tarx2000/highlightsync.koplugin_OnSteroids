@@ -70,6 +70,9 @@ end
 package.preload["ui/network/manager"] = function()
     return { isConnected = function() return true end }
 end
+package.preload["ui/widget/notification"] = function()
+    return { new = function(_, options) return options end }
+end
 package.preload["logger"] = function() return { warn = function() end } end
 package.loaded["insert_menu"] = true
 
@@ -130,7 +133,16 @@ assert_true(not plugin.settings.sync_in_progress, "successful sync should clear 
 assert_true(cache_reset and dirty_called, "successful sync should repaint in place")
 assert_true(saved_settings ~= nil, "sync state should be persisted")
 
-os.remove("/tmp/highlightsync-main-spec/highlightsync-main-spec.json")
-os.execute("rmdir /tmp/highlightsync-main-spec 2>/dev/null")
+local test_temp_path = "/tmp/highlightsync-main-spec/highlightsync-main-spec.json"
+local test_temp_dir = "/tmp/highlightsync-main-spec"
+if package.config:sub(1, 1) == "\\" then
+    test_temp_path = test_temp_path:gsub("/", "\\")
+    test_temp_dir = test_temp_dir:gsub("/", "\\")
+    os.remove(test_temp_path)
+    os.execute('rmdir "' .. test_temp_dir .. '" 2>nul')
+else
+    os.remove(test_temp_path)
+    os.execute('rmdir "' .. test_temp_dir .. '" 2>/dev/null')
+end
 
 print("main_spec: ok")

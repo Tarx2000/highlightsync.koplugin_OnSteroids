@@ -15,8 +15,21 @@ local Notification = require("ui/widget/notification")
 local NetworkMgr = require("ui/network/manager")
 local logger = require("logger")
 
-local SYNC_POLL_INTERVAL = 0.25
-local SYNC_MAX_POLLS = 240 -- 60 seconds
+-- =========================================================================
+-- CONFIGURATION VARIABLES
+-- =========================================================================
+-- How frequently the background subprocess status is checked (in seconds).
+-- Higher values (e.g. 0.5s or 1.0s) reduce CPU wakeups and save battery.
+local SYNC_POLL_INTERVAL = 0.5
+
+-- Max number of checks before assuming the background sync timed out.
+-- 120 polls at 0.5s interval = 60 seconds total timeout duration.
+local SYNC_MAX_POLLS = 120
+
+-- How long to wait (in seconds) after the last annotation modification before
+-- starting the automatic cloud sync. Prevents spamming network connections.
+local ANNOTATION_SYNC_DEBOUNCE_DELAY = 2.0
+-- =========================================================================
 
 local GITHUB_REPO = "titandrive/highlightsync.koplugin"
 local GITHUB_RAW_BASE = "https://raw.githubusercontent.com/" .. GITHUB_REPO .. "/master/"
@@ -47,8 +60,17 @@ end
 
 local function ensure_dir_exists(path)
     if not dir_exists(path) then
-        local safe_path = path:gsub("%$", "\\$")
-        local result = os.execute('mkdir -p "' .. safe_path .. '"')
+        local cmd
+        if package.config:sub(1, 1) == "\\" then
+            -- On Windows, replace slashes and run mkdir (which creates nested dirs by default)
+            local win_path = path:gsub("/", "\\")
+            cmd = 'mkdir "' .. win_path .. '"'
+        else
+            -- On Unix systems, run mkdir -p
+            local safe_path = path:gsub("%$", "\\$")
+            cmd = 'mkdir -p "' .. safe_path .. '"'
+        end
+        local result = os.execute(cmd)
         if not result then
             error("Failed to create directory: " .. path)
         end
@@ -219,7 +241,8 @@ function Highlightsync:onAnnotationsModified()
             self:SyncBookHighlights(false, true)
         end
     end
-    UIManager:scheduleIn(3, self.annotation_sync_timer)
+    -- Debounce the sync to save battery by bundling multiple annotations
+    UIManager:scheduleIn(ANNOTATION_SYNC_DEBOUNCE_DELAY, self.annotation_sync_timer)
 end
 
 

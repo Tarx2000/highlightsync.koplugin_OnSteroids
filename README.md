@@ -71,6 +71,11 @@ Synchronization runs in a background subprocess, keeping the reader responsive w
 * After syncing, the plugin refreshes highlights in place without reloading the book.
 * A cloud request that runs longer than 60 seconds is stopped. Automatic syncing is then paused; use **Sync Highlights** manually to retry.
 
+### 🔋 Kindle & Battery Optimization
+The plugin exposes variables at the top of [main.lua](file:///C:/Users/Tarik/.gemini/antigravity/scratch/highlightsync.koplugin_OnSteroids/main.lua) to maximize battery efficiency on Kindle/E-ink devices:
+* `SYNC_POLL_INTERVAL`: Set to `0.5` seconds by default. Halves the frequency at which the main thread checks on the sync subprocess, reducing CPU wakeup cycles compared to the original `0.25`s.
+* `ANNOTATION_SYNC_DEBOUNCE_DELAY`: Set to `2.0` seconds by default. Debounces automatic cloud sync when modifying annotations to bundle rapid highlights into a single sync batch and avoid battery-heavy Wi-Fi connections.
+
 ---
 
 ## 🛠 Known Limitations
